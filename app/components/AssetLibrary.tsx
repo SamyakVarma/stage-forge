@@ -15,7 +15,7 @@ const categories = [
 ];
 
 export default function AssetLibrary() {
-    const { scene, addAsset, addProp, updateAsset, updateProp } = useScene();
+    const { scene, assets, addAsset, addProp, updateAsset, updateProp } = useScene();
     const [activeCategory, setActiveCategory] = useState("all");
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -29,14 +29,15 @@ export default function AssetLibrary() {
 
     // Edit State
     const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
-    const editingAsset = scene.assets.find(a => a.id === editingAssetId);
     const [isUploading, setIsUploading] = useState(false);
 
-    // Selected Prop (for tweaking individuals)
-    const selectedProp = scene.props.find(p => p.id === scene.selectedPropId);
-    const selectedAsset = selectedProp ? scene.assets.find(a => a.id === selectedProp.assetId) : null;
+    if (!scene) return null;
 
-    const filteredAssets = scene.assets.filter((asset) => {
+    const editingAsset = assets.find(a => a.id === editingAssetId);
+    const selectedProp = scene.props.find(p => p.id === scene.selectedPropId);
+    const selectedAsset = selectedProp ? assets.find(a => a.id === selectedProp.assetId) : null;
+
+    const filteredAssets = assets.filter((asset) => {
         const matchesCategory = activeCategory === "all" || asset.category === activeCategory;
         const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase());
         return matchesCategory && matchesSearch;
@@ -154,6 +155,67 @@ export default function AssetLibrary() {
                             <input className="input-field" value={selectedProp.label} onChange={(e) => updateProp(selectedProp.id, { label: e.target.value })} />
                         </div>
 
+                        {(selectedAsset?.category === "screens") && (
+                            <div style={{ background: "rgba(0,0,0,0.2)", padding: "10px", borderRadius: "8px", border: "1px solid #3b82f6" }}>
+                                <label style={{ color: "#3b82f6", fontSize: "10px", textTransform: "uppercase" }}>Display Controls</label>
+
+                                <div className="edit-section" style={{ marginTop: "8px" }}>
+                                    <small style={{ fontSize: "9px" }}>Source URL (Image/Video MP4)</small>
+                                    <input
+                                        className="input-field"
+                                        placeholder="https://..."
+                                        value={selectedProp.imageUrl || ""}
+                                        onChange={(e) => updateProp(selectedProp.id, { imageUrl: e.target.value })}
+                                    />
+                                </div>
+
+                                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "8px", alignItems: "center" }}>
+                                    <span style={{ fontSize: "11px" }}>Width</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                        <input
+                                            type="range" min="1" max="40" step="0.5"
+                                            value={selectedProp.width || selectedAsset.width || 10}
+                                            onChange={(e) => updateProp(selectedProp.id, { width: parseFloat(e.target.value) })}
+                                        />
+                                        <span style={{ fontSize: "11px", minWidth: "30px" }}>{(selectedProp.width || selectedAsset.width || 10).toFixed(1)}m</span>
+                                    </div>
+                                </div>
+
+                                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "8px", alignItems: "center" }}>
+                                    <span style={{ fontSize: "11px" }}>Height</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                        <input
+                                            type="range" min="1" max="20" step="0.5"
+                                            value={selectedProp.height || selectedAsset.height || 6}
+                                            onChange={(e) => updateProp(selectedProp.id, { height: parseFloat(e.target.value) })}
+                                        />
+                                        <span style={{ fontSize: "11px", minWidth: "30px" }}>{(selectedProp.height || selectedAsset.height || 6).toFixed(1)}m</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {(selectedAsset?.category === "structure" || selectedAsset?.modularWidth) && (
+                            <div style={{ background: "rgba(0,0,0,0.2)", padding: "10px", borderRadius: "8px", border: "1px solid var(--border-primary)" }}>
+                                <label style={{ fontSize: "10px", textTransform: "uppercase" }}>Structural Controls</label>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "8px", alignItems: "center" }}>
+                                    <span style={{ fontSize: "11px" }}>Total Length</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                        <input
+                                            type="range" min="0.5" max="30" step="0.1"
+                                            value={selectedProp.scale.x * (selectedAsset.width || 1)}
+                                            onChange={(e) => {
+                                                const newW = parseFloat(e.target.value);
+                                                const baseW = selectedAsset.width || 1;
+                                                updateProp(selectedProp.id, { scale: { ...selectedProp.scale, x: newW / baseW } });
+                                            }}
+                                        />
+                                        <span style={{ fontSize: "11px", minWidth: "30px" }}>{(selectedProp.scale.x * (selectedAsset.width || 1)).toFixed(1)}m</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {selectedAsset?.category === "lighting" && (
                             <div style={{ background: "rgba(0,0,0,0.2)", padding: "10px", borderRadius: "8px", border: "1px solid rgba(250, 204, 21, 0.2)" }}>
                                 <label style={{ color: "#facc15", fontSize: "10px", textTransform: "uppercase" }}>Light Overwrites</label>
@@ -221,6 +283,10 @@ export default function AssetLibrary() {
                                     <small style={{ fontSize: "8px" }}>Depth</small>
                                     <input type="number" step="0.1" className="input-field" value={editingAsset.depth || 0} onChange={e => handleSaveEdit({ depth: parseFloat(e.target.value) })} />
                                 </div>
+                                <div style={{ flex: 1 }}>
+                                    <small style={{ fontSize: "8px" }}>Mod-Width</small>
+                                    <input type="number" step="0.1" className="input-field" value={editingAsset.modularWidth || 0} onChange={e => handleSaveEdit({ modularWidth: parseFloat(e.target.value) })} />
+                                </div>
                             </div>
                         </div>
 
@@ -251,6 +317,30 @@ export default function AssetLibrary() {
                             </>
                         )}
 
+
+                        {editingAsset.modelUrl && (
+                            <div className="edit-section" style={{ background: "rgba(0,0,0,0.15)", padding: "10px", borderRadius: "8px", border: "1px solid var(--border-primary)" }}>
+                                <label style={{ fontSize: "10px", textTransform: "uppercase", color: "var(--text-accent)" }}>3D Model Fixes (Origin/Rotation)</label>
+
+                                <div style={{ marginTop: "8px" }}>
+                                    <small style={{ fontSize: "9px", color: "var(--text-muted)" }}>Offset (X, Y, Z)</small>
+                                    <div style={{ display: "flex", gap: "5px" }}>
+                                        <input type="number" step="0.05" className="input-field" placeholder="X" value={editingAsset.modelOffset?.x || 0} onChange={e => handleSaveEdit({ modelOffset: { ...(editingAsset.modelOffset || { x: 0, y: 0, z: 0 }), x: parseFloat(e.target.value) } })} />
+                                        <input type="number" step="0.05" className="input-field" placeholder="Y" value={editingAsset.modelOffset?.y || 0} onChange={e => handleSaveEdit({ modelOffset: { ...(editingAsset.modelOffset || { x: 0, y: 0, z: 0 }), y: parseFloat(e.target.value) } })} />
+                                        <input type="number" step="0.05" className="input-field" placeholder="Z" value={editingAsset.modelOffset?.z || 0} onChange={e => handleSaveEdit({ modelOffset: { ...(editingAsset.modelOffset || { x: 0, y: 0, z: 0 }), z: parseFloat(e.target.value) } })} />
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: "8px" }}>
+                                    <small style={{ fontSize: "9px", color: "var(--text-muted)" }}>Rotation Degrees (X, Y, Z)</small>
+                                    <div style={{ display: "flex", gap: "5px" }}>
+                                        <input type="number" step="1" className="input-field" placeholder="X" value={editingAsset.modelRotation?.x || 0} onChange={e => handleSaveEdit({ modelRotation: { ...(editingAsset.modelRotation || { x: 0, y: 0, z: 0 }), x: parseFloat(e.target.value) } })} />
+                                        <input type="number" step="1" className="input-field" placeholder="Y" value={editingAsset.modelRotation?.y || 0} onChange={e => handleSaveEdit({ modelRotation: { ...(editingAsset.modelRotation || { x: 0, y: 0, z: 0 }), y: parseFloat(e.target.value) } })} />
+                                        <input type="number" step="1" className="input-field" placeholder="Z" value={editingAsset.modelRotation?.z || 0} onChange={e => handleSaveEdit({ modelRotation: { ...(editingAsset.modelRotation || { x: 0, y: 0, z: 0 }), z: parseFloat(e.target.value) } })} />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="edit-section">
                             <label>Files & Models</label>

@@ -57,6 +57,7 @@ export interface StageAsset {
     width?: number;        // meters
     height?: number;       // meters
     depth?: number;        // meters (for 3D)
+    modularWidth?: number; // meters (for procedural repeating)
     isGenerated?: boolean; // was this AI-generated?
     generationPrompt?: string; // the prompt used to generate
 
@@ -66,6 +67,10 @@ export interface StageAsset {
     lightType?: "spotlight" | "diffuse" | "panel";
     lightAngle?: number; // conical spread in radians (0 to PI/2)
     lightPenumbra?: number; // 0 (hard) to 1 (soft)
+
+    // Model alignment fixes (Asset-level)
+    modelOffset?: { x: number; y: number; z: number };
+    modelRotation?: { x: number; y: number; z: number };
 }
 
 /** A prop placement on stage — position + timing + keyframes */
@@ -79,11 +84,16 @@ export interface StageProp {
     rotation: Rotation3D;
     scale: Scale3D;
 
-    // Instance-specific overrides for lights
+    // Instance-specific overrides
     lightColor?: string;
     lightPower?: number;
     lightAngle?: number;
     lightPenumbra?: number;
+
+    // Resource overrides
+    imageUrl?: string;    // Override asset image/video per prop
+    width?: number;       // Override base asset width
+    height?: number;     // Override base asset height
 
     enterTime: number;    // seconds from start when prop enters
     exitTime: number;     // seconds from start when prop exits (-1 = stays)
@@ -95,6 +105,9 @@ export interface StageProp {
 
 /** The full scene state */
 export interface SceneState {
+    /** Unique project ID */
+    id: string;
+
     /** Scene metadata */
     meta: {
         name: string;
@@ -104,6 +117,7 @@ export interface SceneState {
         stageDepth: number;   // meters
         stageHeight: number;  // meters (platform height)
         venueType: string;
+        globalIllumination: number; // 0 to 1
     };
 
     /** All assets in the library */

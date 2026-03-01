@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CROWD FLOW v2 — Polygon Simulation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Bebas+Neue&family=Barlow:wght@300;400;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #08080e;
+  --panel: #0e0e18;
+  --border: #1e1e30;
+  --accent: #e8ff47;
+  --teal: #00d4aa;
+  --orange: #ff6b35;
+  --vip: #c9a227;
+  --text: #c8c8d8;
+  --muted: #44445a;
+  --dim: #181825;
+}
+
+body {
+  font-family: 'Barlow', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+header {
+  height: 46px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+header h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 22px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+
+.hbadge {
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.2em;
+  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border-radius: 1px;
+}
+
+.hstatus {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+}
+
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.status-dot.running { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1s infinite; }
+.status-dot.paused { background: var(--orange); }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* LAYOUT */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.sb-section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sb-label {
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.25em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tbtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Barlow', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 2px;
+  transition: all 0.12s;
+  width: 100%;
+}
+.tbtn:hover { border-color: #555; background: var(--dim); }
+.tbtn.active { background: rgba(232,255,71,0.08); border-color: var(--accent); color: var(--accent); }
+
+.tbtn .ic {
+  width: 12px; height: 12px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.ic-venue { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); }
+.ic-stage { background: rgba(255,220,50,0.7); }
+.ic-seating { background: rgba(0,212,170,0.6); }
+.ic-standing { background: rgba(255,107,53,0.5); }
+.ic-door-gen { background: rgba(100,200,255,0.7); }
+.ic-door-vip { background: rgba(201,162,39,0.9); }
+.ic-exit { background: rgba(255,50,50,0.7); }
+.ic-delete { background: transparent; border: 1px solid #444; }
+
+/* param rows */
+.prow {
+  margin-bottom: 8px;
+}
+.prow-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.prow label { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+.prow .val { font-size: 10px; color: var(--accent); font-family: 'DM Mono', monospace; font-weight: 500; }
+input[type=range] { width: 100%; accent-color: var(--accent); height: 3px; cursor: pointer; }
+
+.run-btn {
+  width: 100%;
+  padding: 9px;
+  border: none;
+  background: var(--accent);
+  color: #000;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 15px;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: filter 0.15s;
+  margin-bottom: 4px;
+}
+.run-btn:hover { filter: brightness(1.15); }
+
+.sec-btn {
+  width: 100%;
+  padding: 7px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.12s;
+  margin-bottom: 3px;
+}
+.sec-btn:hover { border-color: var(--orange); color: var(--orange); }
+
+/* Legend */
+.legend { display: flex; flex-direction: column; gap: 4px; }
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+.leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* CANVAS */
+.canvas-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.ctoolbar {
+  height: 32px;
+  background: rgba(8,8,14,0.9);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 16px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.ctip {
+  margin-left: auto;
+  color: #333355;
+}
+
+#simCanvas {
+  flex: 1;
+  display: block;
+  cursor: crosshair;
+  background: #07070d;
+}
+
+/* STATS BAR */
+.stats-bar {
+  height: 44px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 28px;
+  flex-shrink: 0;
+}
+
+.stat { display: flex; flex-direction: column; gap: 1px; }
+.stat-lbl { font-family: 'DM Mono', monospace; font-size: 7px; letter-spacing: 0.2em; color: var(--muted); }
+.stat-v { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 0.05em; color: var(--accent); line-height: 1; }
+.stat-v.vip-c { color: var(--vip); }
+
+/* Door popup */
+.popup {
+  position: fixed;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  padding: 14px;
+  z-index: 200;
+  display: none;
+  min-width: 190px;
+  box-shadow: 0 0 30px rgba(232,255,71,0.12);
+  border-radius: 2px;
+}
+.popup h4 { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.1em; color: var(--accent); margin-bottom: 10px; font-size: 14px; }
+.popup label { display: block; font-family: 'DM Mono', monospace; font-size: 8px; color: var(--muted); margin-top: 8px; margin-bottom: 2px; letter-spacing: 0.12em; }
+.popup input, .popup select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 4px 7px;
+}
+.popup-btns { display: flex; gap: 6px; margin-top: 10px; }
+.pbtn-ok { flex: 1; background: var(--accent); color: #000; border: none; padding: 5px; font-family: 'Bebas Neue', sans-serif; font-size: 12px; cursor: pointer; border-radius: 1px; }
+.pbtn-del { background: transparent; border: 1px solid #f33; color: #f33; padding: 5px 8px; font-family: 'DM Mono', monospace; font-size: 9px; cursor: pointer; border-radius: 1px; }
+
+/* Toast */
+.toast {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(232,255,71,0.15);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  padding: 6px 16px;
+  border-radius: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 300;
+  letter-spacing: 0.1em;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CROWD FLOW</h1>
+  <span class="hbadge">ANT COLONY v2</span>
+  <span class="hbadge" id="modeLabel">DRAW: VENUE</span>
+  <div class="hstatus">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusLabel">IDLE</span>
+    <span id="simClock" style="color:var(--text)">00:00</span>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+
+    <div class="sb-section">
+      <span class="sb-label">POLYGON TOOLS</span>
+      <div class="tool-group">
+        <button class="tbtn active" id="btn-venue" onclick="setTool('venue')"><div class="ic ic-venue"></div>VENUE BOUNDARY</button>
+        <button class="tbtn" id="btn-stage" onclick="setTool('stage')"><div class="ic ic-stage"></div>STAGE AREA</button>
+        <button class="tbtn" id="btn-seating" onclick="setTool('seating')"><div class="ic ic-seating"></div>SEATING ZONE</button>
+        <button class="tbtn" id="btn-standing" onclick="setTool('standing')"><div class="ic ic-standing"></div>STANDING ZONE</button>
+      </div>
+      <div style="margin-top:6px; font-size:9px; color:var(--muted); font-family:'DM Mono',monospace; line-height:1.5">
+        Click to add points<br>Double-click to close<br>ESC to cancel
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <span class="sb-label">DOORS & EXITS</span>
+      <div class="tool-group">
+        <button class="tbtn" id="btn-door-gen" onclick="setTool('door-gen')"><div class="ic ic-door-gen"></div>GENERAL ENTRY</button>
+        <button class="tbtn" id="btn-door-vip" onclick="setTool('door-vip')"><div class="ic ic-door-vip"></div>VIP ENTRY</button>
+        <button class="tbtn" id="btn-exit" onclick="setTool('exit')"><div class="ic ic-exit"></div>EXIT DOOR</button>
+        <button class="tbtn" id="btn-delete" onclick="setTool('delete')"><div class="ic ic-delete"></div>DELETE SHAPE</button>
+      </div>
+      <div style="margin-top:5px; font-size:9px; color:var(--muted); font-family:'DM Mono',monospace;">
+        Click door to configure
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <span class="sb-label">CROWD PARAMS</span>
+
+      <div class="prow">
+        <div class="prow-header"><label>Max agents</label><span class="val" id="v-maxA">600</span></div>
+        <input type="range" id="s-maxA" min="50" max="3000" step="50" value="600" oninput="document.getElementById('v-maxA').textContent=this.value">
+      </div>
+      <div class="prow">
+        <div class="prow-header"><label>VIP count</label><span class="val" id="v-vip">20</span></div>
+        <input type="range" id="s-vip" min="0" max="200" step="5" value="20" oninput="document.getElementById('v-vip').textContent=this.value">
+      </div>
+      <div class="prow">
+        <div class="prow-header"><label>Max density (p/cell)</label><span class="val" id="v-dens">4</span></div>
+        <input type="range" id="s-dens" min="1" max="12" value="4" oninput="document.getElementById('v-dens').textContent=this.value">
+      </div>
+      <div class="prow">
+        <div class="prow-header"><label>Deviation spread</label><span class="val" id="v-expl">0.12</span></div>
+        <input type="range" id="s-expl" min="1" max="40" value="12" oninput="document.getElementById('v-expl').textContent=(this.value/100).toFixed(2)">
+      </div>
+      <div class="prow">
+        <div class="prow-header"><label>Settle drain</label><span class="val" id="v-drain">0.05</span></div>
+        <input type="range" id="s-drain" min="1" max="30" value="5" oninput="document.getElementById('v-drain').textContent=(this.value/100).toFixed(2)">
+      </div>
+      <div class="prow">
+        <div class="prow-header"><label>Potential falloff</label><span class="val" id="v-falloff">0.97</span></div>
+        <input type="range" id="s-falloff" min="80" max="99" value="97" oninput="document.getElementById('v-falloff').textContent=(this.value/100).toFixed(2)">
+      </div>
+      <div class="prow">
+        <div class="prow-header"><label>Sim speed</label><span class="val" id="v-speed">1×</span></div>
+        <input type="range" id="s-speed" min="1" max="6" value="1" oninput="document.getElementById('v-speed').textContent=this.value+'×'">
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <button class="run-btn" onclick="startSim()">▶ RUN SIMULATION</button>
+      <button class="sec-btn" onclick="pauseSim()">⏸ PAUSE / RESUME</button>
+      <button class="sec-btn" onclick="resetSim()">↺ RESET AGENTS</button>
+      <button class="sec-btn" style="color:#f55;border-color:#552" onclick="clearAll()">✕ CLEAR EVERYTHING</button>
+    </div>
+
+    <div class="sb-section">
+      <span class="sb-label">AGENT LEGEND</span>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-dot" style="background:#c9a227"></div>VIP (seeking seat)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#7b5ea7"></div>VIP (seated)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#00d4aa"></div>General (moving)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#ff6b35"></div>General (standing)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#ff3333"></div>Exiting</div>
+        <div class="leg-item"><div class="leg-dot" style="background:rgba(160,220,255,0.6)"></div>Pheromone trail</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#e8ff47; border-radius:1px"></div>Food (stage pull)</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="canvas-wrap">
+    <div class="ctoolbar">
+      <span id="toolHint">Draw the venue boundary polygon</span>
+      <span class="ctip" id="polyHint"></span>
+    </div>
+    <canvas id="simCanvas"></canvas>
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-lbl">IN VENUE</div><div class="stat-v" id="st-total">0</div></div>
+      <div class="stat"><div class="stat-lbl">VIP SEATED</div><div class="stat-v vip-c" id="st-seated">0</div></div>
+      <div class="stat"><div class="stat-lbl">STANDING</div><div class="stat-v" id="st-standing">0</div></div>
+      <div class="stat"><div class="stat-lbl">MOVING</div><div class="stat-v" id="st-moving">0</div></div>
+      <div class="stat"><div class="stat-lbl">EXITED</div><div class="stat-v" id="st-exited">0</div></div>
+      <div class="stat"><div class="stat-lbl">PEAK CROWD</div><div class="stat-v" id="st-peak">0</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Door popup -->
+<div class="popup" id="doorPopup">
+  <h4 id="popupTitle">DOOR CONFIG</h4>
+  <label>DOOR TYPE</label>
+  <select id="dp-type">
+    <option value="door-gen">General Entry</option>
+    <option value="door-vip">VIP Entry</option>
+    <option value="exit">Exit</option>
+  </select>
+  <label>OPEN TIME (minutes)</label>
+  <input type="number" id="dp-open" value="0" min="0" step="1">
+  <label>CLOSE TIME (minutes)</label>
+  <input type="number" id="dp-close" value="120" min="1" step="1">
+  <label>FLOW RATE (agents/sec)</label>
+  <input type="number" id="dp-rate" value="100" min="0.1" step="0.5">
+  <div class="popup-btns">
+    <button class="pbtn-ok" onclick="applyDoorConfig()">APPLY ✓</button>
+    <button class="pbtn-del" onclick="deleteDoor()">DEL</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+//  CORE SETUP
+// ============================================================
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+const CELL = 8; // px per sim cell
+let W, H, COLS, ROWS;
+
+// Grids (flat arrays, size COLS*ROWS)
+let venueGrid;    // bool: is this cell inside venue?
+let zoneGrid;     // 0=open, 1=stage, 2=seating, 3=standing
+let basePotential;// float: static base value (distance-to-stage), 0..1
+let potential;    // float: live field — decreases as agents settle, agents seek peaks
+let pheromone;    // float: light trail for rendering only
+let zoneIdGrid;   // int: which standing/seating polygon each cell belongs to (0=none)
+
+// Polygons
+const PTYPE = { venue:0, stage:1, seating:2, standing:3 };
+let polygons = []; // {type, points:[{x,y}], closed}
+let currentPoly = null;
+let mousePos = {x:0, y:0};
+
+// Doors
+let doors = []; // {x,y,type:'door-gen'|'door-vip'|'exit',openMin,closeMin,rate,spawnAccum}
+let editingDoor = null;
+
+// Agents
+let agents = [];
+let agentId = 0;
+let exitedCount = 0;
+let exitedVips = 0;
+let peakCount = 0;
+
+// Seats (generated from seating polygons)
+let seats = []; // {cx,cy,occupied,occupantId}
+
+// Stage centroid for gradient
+let stageCX = -1, stageCY = -1;
+
+// Sim state
+let simRunning = false, simPaused = false;
+let simTime = 0;
+let lastFrameTs = null, rafId = null;
+
+// Tool
+let currentTool = 'venue';
+let deletingShape = false;
+
+// ============================================================
+//  RESIZE
+// ============================================================
+function resize() {
+  const wrap = canvas.parentElement;
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  W = canvas.width; H = canvas.height;
+  COLS = Math.ceil(W / CELL);
+  ROWS = Math.ceil(H / CELL);
+  venueGrid    = new Uint8Array(COLS * ROWS);
+  zoneGrid     = new Uint8Array(COLS * ROWS);
+  basePotential= new Float32Array(COLS * ROWS);
+  potential    = new Float32Array(COLS * ROWS);
+  pheromone    = new Float32Array(COLS * ROWS);
+  zoneIdGrid   = new Uint8Array(COLS * ROWS);
+  rebuildGrids();
+  render();
+}
+
+window.addEventListener('resize', resize);
+
+// ============================================================
+//  POLYGON MATH
+// ============================================================
+function ptInPoly(px, py, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length-1; i < pts.length; j = i++) {
+    const xi = pts[i].x, yi = pts[i].y;
+    const xj = pts[j].x, yj = pts[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi)) inside = !inside;
+  }
+  return inside;
+}
+
+function cellCenter(cx, cy) { return { x: cx*CELL+CELL/2, y: cy*CELL+CELL/2 }; }
+
+function rebuildGrids() {
+  if (!venueGrid) return;
+  venueGrid.fill(0);
+  zoneGrid.fill(0);
+  potential.fill(0);
+  basePotential.fill(0);
+  zoneIdGrid.fill(0);
+
+  const venuePoly = polygons.find(p => p.type === PTYPE.venue && p.closed);
+  if (!venuePoly) return;
+
+  // Mark venue cells
+  for (let cy = 0; cy < ROWS; cy++) {
+    for (let cx = 0; cx < COLS; cx++) {
+      const {x,y} = cellCenter(cx,cy);
+      if (ptInPoly(x, y, venuePoly.points)) venueGrid[cy*COLS+cx] = 1;
+    }
+  }
+
+  // Overlapping zone polygons
+  const stageCells = [];
+  for (let pi=0; pi<polygons.length; pi++) {
+    const poly = polygons[pi];
+    if (!poly.closed) continue;
+    for (let cy = 0; cy < ROWS; cy++) {
+      for (let cx = 0; cx < COLS; cx++) {
+        if (!venueGrid[cy*COLS+cx]) continue;
+        const {x,y} = cellCenter(cx,cy);
+        if (!ptInPoly(x, y, poly.points)) continue;
+        if (poly.type === PTYPE.stage) { zoneGrid[cy*COLS+cx] = 1; stageCells.push(cy*COLS+cx); }
+        else if (poly.type === PTYPE.seating) { zoneGrid[cy*COLS+cx] = 2; zoneIdGrid[cy*COLS+cx] = pi+1; }
+        else if (poly.type === PTYPE.standing) { zoneGrid[cy*COLS+cx] = 3; zoneIdGrid[cy*COLS+cx] = pi+1; }
+      }
+    }
+  }
+
+  // Stage centroid
+  if (stageCells.length > 0) {
+    let sx = 0, sy = 0;
+    stageCells.forEach(i => { sx += i%COLS; sy += Math.floor(i/COLS); });
+    stageCX = sx / stageCells.length;
+    stageCY = sy / stageCells.length;
+  } else {
+    stageCX = COLS/2; stageCY = ROWS/4;
+  }
+
+  // Build base potential field and seat grid
+  buildPotential();
+  buildSeats();
+}
+
+function buildPotential() {
+  basePotential.fill(0);
+  potential.fill(0);
+
+  // BFS from every stage cell outward through all walkable venue cells.
+  // We record the BFS step-distance from the nearest stage cell.
+  // Potential = 1 - (dist / maxDist), giving 1.0 right at stage edge, 0 at farthest point.
+  // This is a true distance-from-stage-polygon field, not a radial approximation.
+
+  const dist = new Int32Array(COLS * ROWS).fill(-1);
+  const queue = [];
+
+  // Seed: every stage cell is distance 0
+  for (let i = 0; i < COLS * ROWS; i++) {
+    if (zoneGrid[i] === 1) { dist[i] = 0; queue.push(i); }
+  }
+
+  // Fallback: no stage drawn — seed from centroid of venue
+  if (queue.length === 0) {
+    const ci = Math.floor(stageCY)*COLS + Math.floor(stageCX);
+    if (inBoundsC(Math.floor(stageCX), Math.floor(stageCY))) {
+      dist[ci] = 0; queue.push(ci);
+    }
+  }
+
+  // BFS through all non-stage venue cells (open, standing, seating)
+  let head = 0, maxDist = 0;
+  while (head < queue.length) {
+    const i = queue[head++];
+    const cx = i % COLS, cy = Math.floor(i / COLS);
+    for (const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,-1],[-1,1],[1,1]]) {
+      const nx=cx+dx, ny=cy+dy;
+      if (!inBoundsC(nx,ny)) continue;
+      const ni = ny*COLS+nx;
+      if (dist[ni] >= 0) continue;           // already visited
+      if (!venueGrid[ni]) continue;          // outside venue
+      if (zoneGrid[ni] === 1) continue;      // don't cross into another stage cell
+      dist[ni] = dist[i] + 1;
+      if (dist[ni] > maxDist) maxDist = dist[ni];
+      queue.push(ni);
+    }
+  }
+
+  // Convert distances to potential: close to stage = high potential
+  const falloff = +document.getElementById('s-falloff').value/100;
+  // falloff controls steepness: 0.97 = gentle, 0.80 = steep drop-off
+  for (let i = 0; i < COLS * ROWS; i++) {
+    if (dist[i] < 0 || !venueGrid[i] || zoneGrid[i] === 1) continue;
+    // Exponential decay by BFS distance — mirrors the old DECAY^steps approach
+    // but now correctly measured from the entire stage polygon, not a point
+    basePotential[i] = Math.pow(falloff, dist[i]);
+  }
+
+  // Copy to live potential (standing + open cells only — seating handled separately)
+  for (let i = 0; i < COLS * ROWS; i++) potential[i] = basePotential[i];
+}
+
+function buildSeats() {
+  seats = [];
+  for (let cy = 0; cy < ROWS; cy++) {
+    for (let cx = 0; cx < COLS; cx++) {
+      if (zoneGrid[cy*COLS+cx] === 2 && cx%2===0 && cy%2===0) {
+        seats.push({ cx, cy, occupied: false, occupantId: null });
+      }
+    }
+  }
+}
+
+// ============================================================
+//  TOOL & DRAWING
+// ============================================================
+const toolHints = {
+  venue: 'Draw venue boundary → double-click to close',
+  stage: 'Draw stage area (restricted, no crowd)',
+  seating: 'Draw VIP seating zone',
+  standing: 'Draw general standing zone',
+  'door-gen': 'Click to place general entry door on canvas',
+  'door-vip': 'Click to place VIP entry door on canvas',
+  exit: 'Click to place exit door',
+  delete: 'Click a shape or door to delete it',
+};
+
+function setTool(t) {
+  currentTool = t;
+  document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('btn-'+t);
+  if (btn) btn.classList.add('active');
+  document.getElementById('toolHint').textContent = toolHints[t] || '';
+  document.getElementById('modeLabel').textContent = 'DRAW: '+(t.toUpperCase());
+  if (currentPoly && !['venue','stage','seating','standing'].includes(t)) {
+    currentPoly = null;
+  }
+}
+
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  mousePos = { x: e.clientX-r.left, y: e.clientY-r.top };
+  if (currentPoly) render();
+});
+
+canvas.addEventListener('click', e => {
+  const r = canvas.getBoundingClientRect();
+  const x = e.clientX-r.left, y = e.clientY-r.top;
+
+  if (currentTool === 'delete') { handleDelete(x, y); return; }
+
+  if (['door-gen','door-vip','exit'].includes(currentTool)) {
+    placeDoor(x, y, currentTool);
+    return;
+  }
+
+  // Check click on door
+  const d = doors.find(d => Math.hypot(d.x-x, d.y-y) < 14);
+  if (d) { openDoorPopup(d); return; }
+
+  // Polygon drawing
+  if (['venue','stage','seating','standing'].includes(currentTool)) {
+    const typeMap = {venue:0, stage:1, seating:2, standing:3};
+    if (!currentPoly) {
+      currentPoly = { type: typeMap[currentTool], points: [{x,y}], closed: false };
+      polygons.push(currentPoly);
+    } else {
+      // Check close (near first point)
+      const fp = currentPoly.points[0];
+      if (currentPoly.points.length > 2 && Math.hypot(x-fp.x, y-fp.y) < 15) {
+        currentPoly.closed = true;
+        currentPoly = null;
+        rebuildGrids();
+        showToast('POLYGON CLOSED');
+      } else {
+        currentPoly.points.push({x,y});
+      }
+    }
+    render();
+  }
+});
+
+canvas.addEventListener('dblclick', e => {
+  if (!currentPoly) return;
+  if (currentPoly.points.length >= 3) {
+    currentPoly.closed = true;
+    currentPoly = null;
+    rebuildGrids();
+    showToast('POLYGON CLOSED');
+    render();
+  }
+  e.preventDefault();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && currentPoly) {
+    polygons.pop();
+    currentPoly = null;
+    render();
+  }
+});
+
+function handleDelete(x, y) {
+  // Check doors first
+  const di = doors.findIndex(d => Math.hypot(d.x-x, d.y-y) < 14);
+  if (di >= 0) { doors.splice(di, 1); render(); return; }
+  // Check polygons (reverse order)
+  for (let i = polygons.length-1; i >= 0; i--) {
+    const p = polygons[i];
+    if (!p.closed) continue;
+    if (ptInPoly(x, y, p.points)) {
+      polygons.splice(i, 1);
+      rebuildGrids();
+      render();
+      showToast('SHAPE DELETED');
+      return;
+    }
+  }
+}
+
+// ============================================================
+//  DOORS
+// ============================================================
+function placeDoor(x, y, type) {
+  doors.push({ x, y, type, openMin:0, closeMin:120, rate:100, spawnAccum:0 });
+  render();
+}
+
+function openDoorPopup(d) {
+  editingDoor = d;
+  const pop = document.getElementById('doorPopup');
+  pop.style.display = 'block';
+  pop.style.left = Math.min(d.x+10, W-210)+'px';
+  pop.style.top  = Math.min(d.y+10, H-260)+'px';
+  document.getElementById('popupTitle').textContent = {
+    'door-gen':'GENERAL DOOR', 'door-vip':'VIP DOOR', 'exit':'EXIT DOOR'
+  }[d.type] || 'DOOR CONFIG';
+  document.getElementById('dp-type').value = d.type;
+  document.getElementById('dp-open').value = d.openMin;
+  document.getElementById('dp-close').value = d.closeMin;
+  document.getElementById('dp-rate').value = d.rate;
+}
+
+function applyDoorConfig() {
+  if (!editingDoor) return;
+  editingDoor.type    = document.getElementById('dp-type').value;
+  editingDoor.openMin = +document.getElementById('dp-open').value;
+  editingDoor.closeMin= +document.getElementById('dp-close').value;
+  editingDoor.rate    = +document.getElementById('dp-rate').value;
+  document.getElementById('doorPopup').style.display = 'none';
+  editingDoor = null;
+  render();
+}
+
+function deleteDoor() {
+  if (!editingDoor) return;
+  doors = doors.filter(d => d !== editingDoor);
+  document.getElementById('doorPopup').style.display = 'none';
+  editingDoor = null;
+  render();
+}
+
+document.addEventListener('click', e => {
+  const pop = document.getElementById('doorPopup');
+  if (pop.style.display === 'block' && !pop.contains(e.target) && e.target !== canvas) {
+    pop.style.display = 'none';
+    editingDoor = null;
+  }
+});
+
+// ============================================================
+//  SIMULATION
+// ============================================================
+function startSim() {
+  if (simRunning && !simPaused) return;
+  if (simPaused) { simPaused = false; lastFrameTs = performance.now(); rafId = requestAnimationFrame(loop); updateStatus(); return; }
+
+  // Fresh start
+  agents = [];
+  agentId = 0;
+  exitedCount = 0;
+  exitedVips = 0;
+  peakCount = 0;
+  simTime = 0;
+  pheromone.fill(0);
+  // Restore potential to base values
+  for(let i=0;i<COLS*ROWS;i++) potential[i]=basePotential[i];
+  // Reset seats
+  seats.forEach(s => { s.occupied = false; s.occupantId = null; });
+  // Clamp VIP count to available seats
+  // Auto-set VIP count to 80–100% of seat count
+  const maxVIP = seats.length;
+  const autoVIP = Math.round(maxVIP * (0.80 + Math.random()*0.20));
+  const sVIP = document.getElementById('s-vip');
+  sVIP.value = autoVIP;
+  document.getElementById('v-vip').textContent = autoVIP;
+
+  simRunning = true;
+  simPaused = false;
+  updateStatus();
+  lastFrameTs = performance.now();
+  rafId = requestAnimationFrame(loop);
+}
+
+function pauseSim() {
+  if (!simRunning) return;
+  simPaused = !simPaused;
+  updateStatus();
+  if (!simPaused) { lastFrameTs = performance.now(); rafId = requestAnimationFrame(loop); }
+}
+
+function resetSim() {
+  if (rafId) cancelAnimationFrame(rafId);
+  simRunning = false; simPaused = false;
+  agents = []; agentId = 0; exitedCount = 0; exitedVips = 0; peakCount = 0; simTime = 0;
+  pheromone.fill(0); for(let i=0;i<COLS*ROWS;i++) potential[i]=basePotential[i];
+  seats.forEach(s => { s.occupied = false; s.occupantId = null; });
+  updateStatus();
+  updateStats();
+  render();
+}
+
+function clearAll() {
+  resetSim();
+  polygons = []; currentPoly = null; doors = [];
+  rebuildGrids();
+  render();
+}
+
+function updateStatus() {
+  const dot = document.getElementById('statusDot');
+  const lbl = document.getElementById('statusLabel');
+  if (!simRunning) { dot.className='status-dot'; lbl.textContent='IDLE'; }
+  else if (simPaused) { dot.className='status-dot paused'; lbl.textContent='PAUSED'; }
+  else { dot.className='status-dot running'; lbl.textContent='RUNNING'; }
+}
+
+function loop(ts) {
+  if (!simRunning || simPaused) return;
+  const dt = Math.min((ts - lastFrameTs)/1000, 0.1);
+  lastFrameTs = ts;
+  const speed = +document.getElementById('s-speed').value;
+  for (let s = 0; s < speed; s++) step(dt/speed);
+  render();
+  updateStats();
+  const mm = String(Math.floor(simTime/60)).padStart(2,'0');
+  const ss = String(Math.floor(simTime%60)).padStart(2,'0');
+  document.getElementById('simClock').textContent = mm+':'+ss;
+  rafId = requestAnimationFrame(loop);
+}
+
+function step(dt) {
+  simTime += dt;
+  const maxA  = +document.getElementById('s-maxA').value;
+  const nVIP  = +document.getElementById('s-vip').value;
+
+  // Light pheromone decay (visual only)
+  for (let i = 0; i < pheromone.length; i++) {
+    pheromone[i] *= 0.97;
+    if (pheromone[i] < 0.002) pheromone[i] = 0;
+  }
+
+  // Spawn — arrival curve: heavy initial rush tapering to near-zero
+  const simMin = simTime/60;
+  const vipSpawned = agents.filter(a=>a.isVip).length + exitedVips;
+
+  // fillRatio: 0 at start → 1 when full. Rate multiplier decays exponentially with fill.
+  // Result: burst at open, smooth taper, near-zero when close to capacity.
+  const fillRatio = Math.min(agents.length / maxA, 1.0);
+  // Steep decay: at 0% full → multiplier ~1.0, at 80% full → ~0.05, at 100% → 0
+  const arrivalMult = Math.pow(1.0 - fillRatio, 2.5);
+  // Small high-frequency noise (±20%) for natural surging
+  const noise = 1.0 + (Math.random()-0.5)*0.4;
+  const effectiveMult = arrivalMult * noise;
+
+  doors.forEach(door => {
+    if (door.type === 'exit') return;
+    if (simMin < door.openMin || simMin > door.closeMin) return;
+    if (agents.length >= maxA) return;
+
+    // Batch spawn: compute how many agents enter this frame directly
+    // rate is agents-per-second, so agents this frame = rate * effectiveMult * dt
+    // Use accumulator for fractional carry-over
+    if (door.type === 'door-vip') {
+      // VIP: slow trickle, 1 per second max, no burst
+      door.spawnAccum = (door.spawnAccum||0) + Math.min(door.rate, 2) * dt;
+      while (door.spawnAccum >= 1 && agents.length < maxA && vipSpawned < nVIP) {
+        door.spawnAccum -= 1;
+        spawnAgent(door.x + (Math.random()-0.5)*CELL, door.y + (Math.random()-0.5)*CELL, true);
+      }
+    } else {
+      // General: burst inflow with arrival curve
+      door.spawnAccum = (door.spawnAccum||0) + door.rate * effectiveMult * dt;
+      const toSpawn = Math.floor(door.spawnAccum);
+      door.spawnAccum -= toSpawn;
+      const spread = CELL * 2.5;
+      for (let s = 0; s < toSpawn && agents.length < maxA; s++) {
+        const sx = door.x + (Math.random()-0.5)*spread*2;
+        const sy = door.y + (Math.random()-0.5)*spread*2;
+        spawnAgent(sx, sy, false);
+      }
+    }
+  });
+
+  // Moving-agent density grid — used to penalise crowded directions in steering
+  // (separate from settled density so moving agents spread around each other)
+  window._movDens = window._movDens || new Float32Array(COLS * ROWS);
+  window._movDens.fill(0);
+  for (const a of agents) {
+    if (a.state !== 'moving') continue;
+    const cx = Math.floor(a.x/CELL), cy = Math.floor(a.y/CELL);
+    if (inBoundsC(cx,cy)) window._movDens[cy*COLS+cx] += 1;
+  }
+
+  // Cache best potential per zone polygon (zone id → best potential in that zone)
+  window._bestByZone = window._bestByZone || {};
+  const bzMap = window._bestByZone;
+  // Reset
+  for (const k in bzMap) bzMap[k] = 0;
+  for (let i=0;i<COLS*ROWS;i++) {
+    const zid = zoneIdGrid[i];
+    if (!zid) continue;
+    if (zoneGrid[i]===3 && potential[i] > (bzMap[zid]||0)) bzMap[zid] = potential[i];
+    if (zoneGrid[i]===2 && basePotential[i] > (bzMap[zid]||0)) bzMap[zid] = basePotential[i];
+  }
+
+  // Move
+  agents.forEach(a => moveAgent(a, dt));
+
+  // Remove gone agents
+  const pre = agents.length;
+  agents = agents.filter(a => {
+    if (a.gone) {
+      if (a.isVip) exitedVips++;
+      releaseSeat(a); return false;
+    }
+    return true;
+  });
+  exitedCount += pre - agents.length;
+  if (agents.length > peakCount) peakCount = agents.length;
+}
+
+// 8 directions + extended lookahead ring at radius 2 for smoother gradient sensing
+const DIRS8 = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const DIRS_R2 = [[-2,-2],[-2,-1],[-2,0],[-2,1],[-2,2],[-1,-2],[-1,2],[0,-2],[0,2],[1,-2],[1,2],[2,-2],[2,-1],[2,0],[2,1],[2,2]];
+
+function spawnAgent(px, py, isVip) {
+  // Find the nearest venue cell — doors may be outside the venue polygon
+  const dcx = Math.floor(px/CELL), dcy = Math.floor(py/CELL);
+  let nearestVX = null, nearestVY = null, nearestD = 1e9;
+  for (let r = 0; r <= 12; r++) {
+    for (let dy2 = -r; dy2 <= r; dy2++) {
+      for (let dx2 = -r; dx2 <= r; dx2++) {
+        if (Math.abs(dx2) !== r && Math.abs(dy2) !== r) continue;
+        const nx = dcx+dx2, ny = dcy+dy2;
+        if (!inBoundsC(nx,ny)) continue;
+        const ni = ny*COLS+nx;
+        if (venueGrid[ni] && zoneGrid[ni] !== 1) {
+          const d = dx2*dx2+dy2*dy2;
+          if (d < nearestD) { nearestD=d; nearestVX=nx; nearestVY=ny; }
+        }
+      }
+    }
+    if (nearestVX !== null) break;
+  }
+
+  // Initial heading: point toward nearest venue cell
+  let hx = 0, hy = 1;
+  if (nearestVX !== null) {
+    const ddx = nearestVX*CELL+CELL/2 - px;
+    const ddy = nearestVY*CELL+CELL/2 - py;
+    const dm = Math.hypot(ddx,ddy);
+    if (dm > 0) { hx=ddx/dm; hy=ddy/dm; }
+  }
+
+  agents.push({
+    id: agentId++,
+    x: px, y: py,
+    vx: hx * 0.5, vy: hy * 0.5,
+    headingX: hx, headingY: hy,
+    isVip,
+    state: 'moving',
+    targetSeat: null,
+    patience: isVip ? 999 : 25 + Math.random()*60,
+    gone: false,
+    speed: isVip ? 1.2+Math.random()*0.4 : 1.4+Math.random()*0.6,
+    deviationTrait: Math.random() * (+document.getElementById('s-expl').value/100),
+  });
+}
+
+// POTENTIAL FIELD CONSTANTS
+// Each standing cell has a live `potential[i]` value (0..1).
+// Initialized from distance-to-stage (high=near stage).
+// When an agent settles, potential at that cell drops toward 0,
+// making adjacent unsettled cells the new attractive frontier.
+// Agents simply climb the potential gradient — full knowledge, no trails needed.
+const SETTLE_DRAIN = () => +document.getElementById("s-drain").value/100;
+
+function moveAgent(a, dt) {
+  const cx = Math.floor(a.x/CELL), cy = Math.floor(a.y/CELL);
+  const inV = inBoundsC(cx,cy);
+  const cellI = inV ? cy*COLS+cx : -1;
+
+  // ── SEATED VIP ────────────────────────────────────────────
+  if (a.state === 'seated') {
+    a.patience -= dt * 0.012;
+    if (a.patience <= 0) a.state = 'exiting';
+    return;
+  }
+
+  // ── STANDING (general, settled) ───────────────────────────
+  if (a.state === 'standing') {
+    // Completely still — no micro-drift, no physics
+    a.patience -= dt * 0.03;
+    if (a.patience <= 0) {
+      // Restore potential when leaving (spot becomes available again)
+      if (cellI >= 0) potential[cellI] = Math.min(basePotential[cellI], potential[cellI] + SETTLE_DRAIN());
+      // Small exit cascade among immediate neighbours
+      agents.forEach(b => {
+        if (b===a || b.state!=='standing') return;
+        if (Math.hypot(b.x-a.x,b.y-a.y) < CELL*2 && Math.random() < 0.03) b.patience *= 0.4;
+      });
+      a.state = 'exiting';
+    }
+    return;
+  }
+
+  // ── EXITING ───────────────────────────────────────────────
+  if (a.state === 'exiting') {
+    releaseSeat(a);
+    const exitDoors = doors.filter(d => d.type==='exit');
+    if (exitDoors.length === 0) { a.gone = true; return; }
+    let best = exitDoors[0], bestD = 1e9;
+    exitDoors.forEach(d => { const dd=(d.x-a.x)**2+(d.y-a.y)**2; if(dd<bestD){bestD=dd;best=d;} });
+    const ddx=best.x-a.x, ddy=best.y-a.y, dist=Math.hypot(ddx,ddy);
+    if (dist < CELL*1.2) { a.gone = true; return; }
+    const tx=ddx/dist, ty=ddy/dist;
+    a.headingX = a.headingX*0.5 + tx*0.5;
+    a.headingY = a.headingY*0.5 + ty*0.5;
+    const hm=Math.hypot(a.headingX,a.headingY);
+    if(hm>0){a.headingX/=hm; a.headingY/=hm;}
+    applyPhysics(a, dt, 0.80);
+    return;
+  }
+
+  // ── MOVING / SEEKING ──────────────────────────────────────
+
+  // VIP: seek the HIGHEST POTENTIAL free seat (not nearest)
+  if (a.isVip) {
+    if (!a.targetSeat) {
+      let best=null, bestP=-1;
+      seats.forEach(s => {
+        if (s.occupied && s.occupantId!==a.id) return;
+        const si=s.cy*COLS+s.cx;
+        const p=basePotential[si]; // use base so target doesn't drift
+        if(p>bestP){bestP=p;best=s;}
+      });
+      if (best) a.targetSeat = best;
+    }
+    if (a.targetSeat) {
+      if (a.targetSeat.occupied && a.targetSeat.occupantId!==a.id) { a.targetSeat=null; return; }
+      const tx=a.targetSeat.cx*CELL+CELL/2, ty=a.targetSeat.cy*CELL+CELL/2;
+      const ddx=tx-a.x, ddy=ty-a.y, dist=Math.hypot(ddx,ddy);
+      if (dist < CELL*0.6) {
+        a.targetSeat.occupied=true; a.targetSeat.occupantId=a.id;
+        a.x=tx; a.y=ty; a.vx=0; a.vy=0;
+        a.state='seated'; a.patience=90+Math.random()*150;
+        return;
+      }
+      const wx=ddx/dist, wy=ddy/dist;
+      a.headingX = a.headingX*0.55 + wx*0.45;
+      a.headingY = a.headingY*0.55 + wy*0.45;
+      const hm=Math.hypot(a.headingX,a.headingY);
+      if(hm>0){a.headingX/=hm;a.headingY/=hm;}
+    } else {
+      potentialSteer(a);
+    }
+    applyPhysics(a, dt, 0.84);
+    return;
+  }
+
+  // General: climb the potential field
+  potentialSteer(a);
+
+  // SETTLE only when at the peak of this agent's current zone.
+  // Each zone fills from stage-proximity outward independently.
+  if (inV && zoneGrid[cellI]===3 && potential[cellI] > 0.01) {
+    const zid = zoneIdGrid[cellI];
+    const zoneBest = (zid && window._bestByZone) ? (window._bestByZone[zid]||0) : 0;
+    if (potential[cellI] >= zoneBest * 0.95) {
+      a.state = 'standing';
+      a.vx = 0; a.vy = 0;
+      a.patience = 30 + Math.random()*120;
+      potential[cellI] = Math.max(0, potential[cellI] - SETTLE_DRAIN());
+      return;
+    }
+  }
+
+  applyPhysics(a, dt, 0.84);
+}
+
+// potentialSteer: agents read the live potential field and steer uphill.
+// Outside venue → heading is already set toward nearest venue cell (from spawn), keep going.
+function potentialSteer(a) {
+  const cx = Math.floor(a.x/CELL), cy = Math.floor(a.y/CELL);
+  if (!inBoundsC(cx,cy) || !venueGrid[cy*COLS+cx]) return; // outside: trust spawn heading
+
+  // Sample all 8 neighbours + radius-2 ring, pick weighted uphill direction
+  let desX=0, desY=0, totW=0;
+  const allDirs = [...DIRS8, ...DIRS_R2];
+
+  for (const [dx,dy] of allDirs) {
+    const nx=cx+dx, ny=cy+dy;
+    if (!inBoundsC(nx,ny)) continue;
+    const ni=ny*COLS+nx;
+    if (!venueGrid[ni] || zoneGrid[ni]===1) continue; // wall or stage
+
+    const dist = Math.hypot(dx,dy)||1;
+    // Weight = live potential of neighbour, inverse-distance scaled
+    // This naturally steers toward high-potential (near-stage, unsettled) cells
+    // Zone enforcement: VIPs only seating, generals only standing
+    const z = zoneGrid[ni];
+    if (a.isVip && z===3) continue;
+    if (!a.isVip && z===2) continue;
+
+    // Base weight: potential gradient (what draws agents toward stage)
+    let w = potential[ni] / dist;
+
+    // Zone bonus
+    if (a.isVip && z===2) w *= 2.5;
+    if (!a.isVip && z===3) w *= 1.6;
+
+    // Penalise directions crowded with other moving agents
+    // This is what breaks convergence — agents naturally spread around each other
+    const crowding = (window._movDens && window._movDens[ni]) || 0;
+    w *= Math.max(0, 1.0 - crowding * 0.35);
+
+    if (w <= 0) continue;
+    desX += dx*w; desY += dy*w; totW += w;
+  }
+
+  if (totW > 0) {
+    desX /= totW; desY /= totW;
+    const dm = Math.hypot(desX,desY);
+    if (dm > 0) { desX/=dm; desY/=dm; }
+
+    // Fixed per-agent angular deviation
+    const devAngle = a.deviationTrait * (a.id%2===0 ? 1 : -1);
+    const cos=Math.cos(devAngle), sin=Math.sin(devAngle);
+    const rotX=desX*cos - desY*sin, rotY=desX*sin + desY*cos;
+
+    // Moderate turn rate: responsive but not snappy — agents flow, not snap
+    // Same rate regardless of alignment; removes the circling↔converging oscillation
+    const tr = 0.22 + a.deviationTrait * 0.08;
+    a.headingX = a.headingX*(1-tr) + rotX*tr;
+    a.headingY = a.headingY*(1-tr) + rotY*tr;
+    const hm=Math.hypot(a.headingX,a.headingY);
+    if(hm>0){a.headingX/=hm;a.headingY/=hm;}
+  }
+}
+
+function applyPhysics(a, dt, friction=0.88) {
+  // Drive: apply heading force. Scale by speed so faster agents accelerate more
+  // Using direct force (not *dt) since heading update already absorbed dt timing
+  const drive = a.speed * 0.18;
+  a.vx += a.headingX * drive;
+  a.vy += a.headingY * drive;
+
+  // Clamp to max speed
+  const spd = Math.hypot(a.vx,a.vy);
+  if (spd > a.speed) { a.vx*=a.speed/spd; a.vy*=a.speed/spd; }
+
+  // Friction (lower = more glide, higher = stops quickly)
+  a.vx *= friction; a.vy *= friction;
+
+  let nx = a.x+a.vx, ny = a.y+a.vy;
+
+  // Wall check: test x and y independently for clean sliding
+  const ncxT=Math.floor((a.x+a.vx)/CELL), ncyT=Math.floor(a.y/CELL);
+  const ncxF=Math.floor(a.x/CELL),        ncyF=Math.floor((a.y+a.vy)/CELL);
+
+  const _zxT = inBoundsC(ncxT,ncyT) ? zoneGrid[ncyT*COLS+ncxT] : -1;
+  const _zyF = inBoundsC(ncxF,ncyF) ? zoneGrid[ncyF*COLS+ncxF] : -1;
+  // Block stage; also block VIPs from standing zone and generals from seating zone
+  const xBlocked = !inBoundsC(ncxT,ncyT) || !venueGrid[ncyT*COLS+ncxT] || _zxT===1
+    || (a.isVip && _zxT===3) || (!a.isVip && _zxT===2);
+  const yBlocked = !inBoundsC(ncxF,ncyF) || !venueGrid[ncyF*COLS+ncxF] || _zyF===1
+    || (a.isVip && _zyF===3) || (!a.isVip && _zyF===2);
+
+  if (xBlocked) {
+    a.vx *= -0.3;
+    a.headingX *= -0.6;
+    nx = a.x;
+  }
+  if (yBlocked) {
+    a.vy *= -0.3;
+    a.headingY *= -0.6;
+    ny = a.y;
+  }
+
+  a.x = nx; a.y = ny;
+
+  // Pheromone deposit
+  const ci=Math.floor(a.y/CELL)*COLS+Math.floor(a.x/CELL);
+  if (ci>=0&&ci<pheromone.length) pheromone[ci]=Math.min(1,pheromone[ci]+0.02);
+}
+
+function inBoundsC(cx,cy){return cx>=0&&cy>=0&&cx<COLS&&cy<ROWS;}
+
+function releaseSeat(a) {
+  if (!a.targetSeat) return;
+  if (a.targetSeat.occupantId===a.id) { a.targetSeat.occupied=false; a.targetSeat.occupantId=null; }
+  a.targetSeat=null;
+}
+
+// ============================================================
+//  RENDERING
+// ============================================================
+function render() {
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle='#07070d';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid lines (very subtle)
+  ctx.strokeStyle='rgba(255,255,255,0.025)';
+  ctx.lineWidth=0.5;
+  for (let cx=0;cx<=COLS;cx++) { ctx.beginPath();ctx.moveTo(cx*CELL,0);ctx.lineTo(cx*CELL,H);ctx.stroke(); }
+  for (let cy=0;cy<=ROWS;cy++) { ctx.beginPath();ctx.moveTo(0,cy*CELL);ctx.lineTo(W,cy*CELL);ctx.stroke(); }
+
+  // --- Draw venue cells ---
+  if (venueGrid) {
+    for (let cy=0;cy<ROWS;cy++) {
+      for (let cx=0;cx<COLS;cx++) {
+        const i=cy*COLS+cx;
+        if (!venueGrid[i]) continue;
+        const z=zoneGrid[i];
+        let fill;
+        if (z===1) fill='rgba(255,220,50,0.12)';       // stage
+        else if (z===2) fill='rgba(0,212,170,0.12)';   // seating
+        else if (z===3) fill='rgba(255,107,53,0.1)';   // standing
+        else fill='rgba(255,255,255,0.04)';             // venue open
+        ctx.fillStyle=fill;
+        ctx.fillRect(cx*CELL,cy*CELL,CELL,CELL);
+      }
+    }
+  }
+
+  // Food dots (standing zones only)
+  // Draw potential field — always visible so user can see the field shape
+  for (let cy=0;cy<ROWS;cy++) {
+    for (let cx=0;cx<COLS;cx++) {
+      const i=cy*COLS+cx;
+      if (zoneGrid[i]!==3) continue;
+      const p=potential[i];
+      if (p<0.01) continue;
+      ctx.fillStyle=`rgba(232,255,71,${p*0.22})`;
+      ctx.fillRect(cx*CELL,cy*CELL,CELL,CELL);
+    }
+  }
+
+  // Pheromone
+  if (pheromone && simRunning) {
+    for (let cy=0;cy<ROWS;cy++) {
+      for (let cx=0;cx<COLS;cx++) {
+        const ph=pheromone[cy*COLS+cx];
+        if (ph<0.01) continue;
+        ctx.fillStyle=`rgba(160,220,255,${ph*0.28})`;
+        ctx.fillRect(cx*CELL,cy*CELL,CELL,CELL);
+      }
+    }
+  }
+
+  // Seats
+  for (const s of seats) {
+    ctx.fillStyle=s.occupied?'rgba(123,94,167,0.7)':'rgba(0,212,170,0.2)';
+    ctx.strokeStyle=s.occupied?'rgba(123,94,167,0.9)':'rgba(0,212,170,0.35)';
+    ctx.lineWidth=0.5;
+    ctx.fillRect(s.cx*CELL+1,s.cy*CELL+1,CELL-2,CELL-2);
+    ctx.strokeRect(s.cx*CELL+1,s.cy*CELL+1,CELL-2,CELL-2);
+  }
+
+  // Polygons overlay (edges)
+  drawPolygons();
+
+  // Agents
+  for (const a of agents) {
+    let color;
+    if (a.isVip) color = a.state==='seated'?'#7b5ea7':'#c9a227';
+    else if (a.state==='exiting') color='#ff3333';
+    else if (a.state==='standing') color='#ff6b35';
+    else color='#00d4aa';
+
+    ctx.beginPath();
+    ctx.arc(a.x,a.y, a.isVip?3.2:2.2, 0,Math.PI*2);
+    ctx.fillStyle=color;
+    ctx.fill();
+
+    // velocity line
+    if (a.state==='moving' || a.state==='exiting') {
+      ctx.beginPath();
+      ctx.moveTo(a.x,a.y);
+      ctx.lineTo(a.x-a.vx*CELL*1.5, a.y-a.vy*CELL*1.5);
+      ctx.strokeStyle=color+'55';
+      ctx.lineWidth=0.8;
+      ctx.stroke();
+    }
+
+    // VIP diamond indicator
+    if (a.isVip && a.state!=='seated') {
+      ctx.save();
+      ctx.translate(a.x,a.y);
+      ctx.rotate(Math.PI/4);
+      ctx.strokeStyle='rgba(201,162,39,0.8)';
+      ctx.lineWidth=0.7;
+      ctx.strokeRect(-3,-3,6,6);
+      ctx.restore();
+    }
+  }
+
+  // Doors
+  drawDoors();
+
+  // In-progress polygon
+  if (currentPoly) drawCurrentPoly();
+}
+
+function drawPolygons() {
+  const typeColors = {
+    0: { fill:'rgba(255,255,255,0)', stroke:'rgba(255,255,255,0.5)' },
+    1: { fill:'rgba(255,220,50,0)',  stroke:'rgba(255,220,50,0.7)' },
+    2: { fill:'rgba(0,212,170,0)',   stroke:'rgba(0,212,170,0.6)' },
+    3: { fill:'rgba(255,107,53,0)',  stroke:'rgba(255,107,53,0.55)' },
+  };
+  for (const p of polygons) {
+    if (p.points.length < 2) continue;
+    const c = typeColors[p.type];
+    ctx.beginPath();
+    ctx.moveTo(p.points[0].x, p.points[0].y);
+    p.points.slice(1).forEach(pt => ctx.lineTo(pt.x,pt.y));
+    if (p.closed) ctx.closePath();
+    ctx.strokeStyle = c.stroke;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash(p.closed?[]:[5,4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Vertex dots
+    p.points.forEach((pt,i) => {
+      ctx.beginPath();
+      ctx.arc(pt.x,pt.y,i===0?4:2.5,0,Math.PI*2);
+      ctx.fillStyle=i===0?c.stroke:'rgba(255,255,255,0.4)';
+      ctx.fill();
+    });
+  }
+}
+
+function drawCurrentPoly() {
+  if (!currentPoly || currentPoly.points.length===0) return;
+  const last = currentPoly.points[currentPoly.points.length-1];
+  ctx.beginPath();
+  ctx.moveTo(last.x, last.y);
+  ctx.lineTo(mousePos.x, mousePos.y);
+  ctx.strokeStyle='rgba(232,255,71,0.5)';
+  ctx.lineWidth=1;
+  ctx.setLineDash([4,4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Close hint
+  if (currentPoly.points.length>=3) {
+    const fp=currentPoly.points[0];
+    const dist=Math.hypot(mousePos.x-fp.x,mousePos.y-fp.y);
+    if (dist<20) {
+      ctx.beginPath();
+      ctx.arc(fp.x,fp.y,8,0,Math.PI*2);
+      ctx.fillStyle='rgba(232,255,71,0.25)';
+      ctx.fill();
+    }
+  }
+}
+
+function drawDoors() {
+  doors.forEach(d => {
+    const simMin = simTime/60;
+    const active = simRunning && simMin>=d.openMin && simMin<=d.closeMin;
+    const colors = { 'door-gen':'#64c8ff', 'door-vip':'#c9a227', exit:'#ff3333' };
+    const labels = { 'door-gen':'G', 'door-vip':'V', exit:'X' };
+    const c = colors[d.type]||'#fff';
+    const r = 10;
+    ctx.beginPath();
+    ctx.arc(d.x,d.y,r,0,Math.PI*2);
+    ctx.fillStyle = active ? c+'cc' : c+'33';
+    ctx.fill();
+    ctx.strokeStyle = c;
+    ctx.lineWidth = active?2:1;
+    ctx.stroke();
+    if (active) {
+      ctx.beginPath();
+      ctx.arc(d.x,d.y,r+4,0,Math.PI*2);
+      ctx.strokeStyle=c+'44';
+      ctx.lineWidth=2;
+      ctx.stroke();
+    }
+    ctx.fillStyle='#000';
+    ctx.font=`bold 9px 'DM Mono',monospace`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(labels[d.type]||'?', d.x, d.y);
+  });
+}
+
+// ============================================================
+//  STATS
+// ============================================================
+function updateStats() {
+  const seated  = agents.filter(a=>a.state==='seated').length;
+  const standing= agents.filter(a=>a.state==='standing').length;
+  const moving  = agents.filter(a=>a.state==='moving').length;
+  document.getElementById('st-total').textContent    = agents.length;
+  document.getElementById('st-seated').textContent   = seated;
+  document.getElementById('st-standing').textContent = standing;
+  document.getElementById('st-moving').textContent   = moving;
+  document.getElementById('st-exited').textContent   = exitedCount;
+  document.getElementById('st-peak').textContent     = peakCount;
+}
+
+// ============================================================
+//  TOAST
+// ============================================================
+let toastTimer;
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+resize();
+setTool('venue');
+render();
+</script>
+</body>
+</html>

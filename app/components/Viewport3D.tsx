@@ -9,22 +9,53 @@ import * as THREE from "three";
 // ============================================
 // Model Component
 // ============================================
-function Model({ url, width, height, depth }: { url: string; width: number; height: number; depth: number }) {
+function Model({ url, width, height, depth, offset, rotation }: {
+    url: string;
+    width: number;
+    height: number;
+    depth: number;
+    offset?: { x: number; y: number; z: number };
+    rotation?: { x: number; y: number; z: number };
+}) {
     const { scene } = useGLTF(url);
-    const cloned = useMemo(() => scene.clone(true), [scene, url]);
+    const cloned = useMemo(() => {
+        const c = scene.clone(true);
+        c.updateMatrixWorld(true);
+        return c;
+    }, [scene, url]);
 
-    // Auto-scale model to fit defined asset bounds
-    const box = useMemo(() => new THREE.Box3().setFromObject(cloned), [cloned]);
-    const size = box.getSize(new THREE.Vector3());
-    const scaleX = width / size.x;
-    const scaleY = height / size.y;
-    const scaleZ = depth / size.z;
+    // Normalize and Scale (calculated from the raw scene to avoid feedback loops)
+    const { finalScale, normalizedCenter } = useMemo(() => {
+        const box = new THREE.Box3().setFromObject(scene);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
 
-    const finalScale = Math.min(scaleX, scaleY, scaleZ);
+        const scaleX = width / (size.x || 1);
+        const scaleY = height / (size.y || 1);
+        const scaleZ = depth / (size.z || 1);
+        const scale = Math.min(scaleX, scaleY, scaleZ);
+
+        return {
+            finalScale: scale,
+            normalizedCenter: center.multiplyScalar(-1)
+        };
+    }, [scene, width, height, depth]);
+
+    const rotX = (rotation?.x || 0) * (Math.PI / 180);
+    const rotY = (rotation?.y || 0) * (Math.PI / 180);
+    const rotZ = (rotation?.z || 0) * (Math.PI / 180);
 
     return (
-        <group position={[0, -height / 2, 0]}>
-            <primitive object={cloned} scale={[finalScale, finalScale, finalScale]} />
+        <group rotation={[rotX, rotY, rotZ]}>
+            <primitive
+                object={cloned}
+                scale={[finalScale, finalScale, finalScale]}
+                position={[
+                    normalizedCenter.x * finalScale + (offset?.x || 0),
+                    normalizedCenter.y * finalScale + (offset?.y || 0),
+                    normalizedCenter.z * finalScale + (offset?.z || 0)
+                ]}
+            />
         </group>
     );
 }
@@ -37,32 +68,79 @@ function Prop3D({ prop, asset, stageHeight, isSelected }: { prop: any; asset?: a
     const [hovered, setHovered] = useState(false);
     const targetRef = useRef<THREE.Object3D>(null);
 
-    const width = (asset?.width || 1) * prop.scale.x;
-    const height = (asset?.height || 1) * prop.scale.y;
+    const width = prop.width || (asset?.width || 1) * prop.scale.x;
+    const height = prop.height || (asset?.height || 1) * prop.scale.y;
     const depth = (asset?.depth || 0.1) * prop.scale.z;
 
-    const isStructure = asset?.category === "structure" || asset?.category === "screens";
-    const hasImage = !!asset?.imageUrl;
+    const isStructure = asset?.category === "structure";
+    const isScreen = asset?.category === "screens";
+    const currentImageUrl = prop.imageUrl || asset?.imageUrl;
+    const hasImage = !!currentImageUrl;
+
+    // Video Texture Logic
+    const videoTexture = useMemo(() => {
+        if (isScreen && hasImage && currentImageUrl?.toLowerCase().endsWith(".mp4")) {
+            const video = document.createElement('video');
+            video.src = currentImageUrl;
+            video.crossOrigin = "anonymous";
+            video.loop = true;
+            video.muted = true;
+            video.play().catch(() => { });
+            const tex = new THREE.VideoTexture(video);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+        }
+        return null;
+    }, [isScreen, hasImage, currentImageUrl]);
 
     const texture = useMemo(() => {
-        if (hasImage && !isStructure) {
+        if (hasImage && !isStructure && !videoTexture) {
             const loader = new THREE.TextureLoader();
             try {
-                const t = loader.load(asset.imageUrl!);
+                const t = loader.load(currentImageUrl!);
                 t.colorSpace = THREE.SRGBColorSpace;
                 return t;
             } catch { return null; }
         }
         return null;
-    }, [hasImage, isStructure, asset?.imageUrl]);
-
-    const usePlaneTexture = texture !== null;
-    const use3DModel = !!asset?.modelUrl;
+    }, [hasImage, isStructure, currentImageUrl, videoTexture]);
 
     const lightColor = prop.lightColor || asset?.lightColor || getCategoryColor(asset?.name || "");
     const lightPower = prop.lightPower ?? asset?.lightPower ?? 2;
     const lightAngle = prop.lightAngle ?? asset?.lightAngle ?? 0.4;
     const lightPenumbra = prop.lightPenumbra ?? 0.5;
+
+    // Multi-material for screen cuboid (+x, -x, +y, -y, +z, -z)
+    const screenMaterials = useMemo(() => {
+        if (!isScreen) return null;
+        const chassis = new THREE.MeshStandardMaterial({
+            color: "#050505",
+            roughness: 0.1,
+            metalness: 0.9
+        });
+        const display = new THREE.MeshStandardMaterial({
+            map: videoTexture || texture || null,
+            emissive: (videoTexture || texture) ? (lightColor || "#ffffff") : "#000000",
+            emissiveIntensity: (videoTexture || texture) ? lightPower : 0,
+            emissiveMap: videoTexture || texture || null,
+            roughness: 0.2,
+            metalness: 0.5
+        });
+        return [chassis, chassis, chassis, chassis, display, chassis];
+    }, [isScreen, videoTexture, texture, lightColor, lightPower]);
+
+    const use3DModel = !!asset?.modelUrl;
+    const isModular = !!asset?.modularWidth;
+
+    // Procedural Repeating Logic
+    const procedural = useMemo(() => {
+        if (!isModular || !asset?.modularWidth || !use3DModel) return null;
+        const totalW = width;
+        const modW = asset.modularWidth;
+        const count = Math.max(1, Math.round(totalW / modW));
+        const actualWidth = count * modW;
+        return { count, modW, actualWidth };
+    }, [isModular, asset?.modularWidth, use3DModel, width]);
 
     return (
         <group
@@ -77,19 +155,77 @@ function Prop3D({ prop, asset, stageHeight, isSelected }: { prop: any; asset?: a
             onClick={(e) => { e.stopPropagation(); setSelectedPropId(prop.id); }}
         >
             {use3DModel ? (
-                <Suspense fallback={<mesh><boxGeometry args={[width, height, depth]} /><meshStandardMaterial wireframe color="#6366f1" /></mesh>}>
-                    <Model url={asset!.modelUrl!} width={width} height={height} depth={depth} />
-                </Suspense>
-            ) : usePlaneTexture ? (
+                procedural ? (
+                    <group position={[-procedural.actualWidth / 2 + procedural.modW / 2, 0, 0]}>
+                        {Array.from({ length: procedural.count }).map((_, i) => (
+                            <group key={i} position={[i * procedural.modW, 0, 0]}>
+                                <Suspense fallback={<mesh><boxGeometry args={[procedural.modW, height, depth]} /><meshStandardMaterial wireframe color="#6366f1" /></mesh>}>
+                                    <Model
+                                        url={asset!.modelUrl!}
+                                        width={procedural.modW}
+                                        height={height}
+                                        depth={depth}
+                                        offset={asset?.modelOffset}
+                                        rotation={asset?.modelRotation}
+                                    />
+                                </Suspense>
+                            </group>
+                        ))}
+                    </group>
+                ) : (
+                    <Suspense fallback={<mesh><boxGeometry args={[width, height, depth]} /><meshStandardMaterial wireframe color="#6366f1" /></mesh>}>
+                        <Model
+                            url={asset!.modelUrl!}
+                            width={width}
+                            height={height}
+                            depth={depth}
+                            offset={asset?.modelOffset}
+                            rotation={asset?.modelRotation}
+                        />
+                    </Suspense>
+                )
+            ) : isScreen ? (
+                <mesh material={screenMaterials as any}>
+                    <boxGeometry args={[width, height, depth]} />
+                </mesh>
+            ) : texture ? (
                 <mesh>
                     <planeGeometry args={[width, height]} />
-                    <meshStandardMaterial map={texture} transparent alphaTest={0.05} side={THREE.DoubleSide} emissive={isSelected || hovered ? "#6366f1" : "#000000"} emissiveIntensity={isSelected ? 0.5 : (hovered ? 0.3 : 0)} />
+                    <meshStandardMaterial
+                        map={texture}
+                        transparent
+                        alphaTest={0.05}
+                        side={THREE.DoubleSide}
+                        emissive={isSelected || hovered ? "#6366f1" : "#000000"}
+                        emissiveIntensity={isSelected ? 0.5 : (hovered ? 0.3 : 0)}
+                    />
                 </mesh>
             ) : (
                 <mesh>
                     <boxGeometry args={[width, height, depth]} />
-                    <meshStandardMaterial color={getCategoryColor(asset?.name || "")} transparent opacity={hovered ? 0.9 : 0.7} emissive={isSelected || hovered ? "#6366f1" : "#000000"} emissiveIntensity={isSelected ? 0.5 : (hovered ? 0.4 : 0)} />
+                    <meshStandardMaterial
+                        color={getCategoryColor(asset?.name || "")}
+                        transparent
+                        opacity={hovered ? 0.9 : (isStructure ? 1 : 0.7)}
+                        metalness={isStructure ? 0.5 : 0}
+                        roughness={isStructure ? 0.2 : 1}
+                        emissive={isSelected || hovered ? "#6366f1" : "#000000"}
+                        emissiveIntensity={isSelected ? 0.5 : (hovered ? 0.4 : 0)}
+                    />
                 </mesh>
+            )}
+
+            {(asset?.category === "lighting" || isScreen) && (asset?.lightType === "panel" || isScreen) && lightPower > 0 && (
+                <group position={[0, 0, depth / 2]}>
+                    <rectAreaLight
+                        width={width}
+                        height={height}
+                        color={lightColor || "#ffffff"}
+                        intensity={lightPower * 15}
+                        position={[0, 0, 0.05]}
+                        rotation={isScreen ? [0, Math.PI, 0] : [-Math.PI / 2, 0, 0]}
+                    />
+                </group>
             )}
 
             {asset?.category === "lighting" && asset?.lightType !== "panel" && (
@@ -101,24 +237,12 @@ function Prop3D({ prop, asset, stageHeight, isSelected }: { prop: any; asset?: a
                         attenuation={5}
                         anglePower={5}
                         color={lightColor}
-                        intensity={lightPower * 10} // Boosted for better visibility
+                        intensity={lightPower * 10}
                         target={targetRef.current || undefined}
                     />
                     <object3D ref={targetRef as any} position={[0, 0, -1]} />
                 </group>
             )}
-
-            {asset?.category === "lighting" && asset?.lightType === "panel" && (
-                <rectAreaLight
-                    width={width}
-                    height={height}
-                    color={lightColor}
-                    intensity={lightPower * 20} // Panel lights need high intensity
-                    position={[0, 0, 0]}
-                    rotation={[-Math.PI / 2, 0, 0]}
-                />
-            )}
-
 
             {isSelected && (
                 <mesh position={[0, -height / 2 + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -142,20 +266,50 @@ function getCategoryColor(name: string): string {
 // Scene3D component
 function Scene3D() {
     const { scene, getVisibleProps, getInterpolatedProp, getAssetById } = useScene();
+    if (!scene) return null;
     const visibleProps = getVisibleProps();
+    const gi = scene.meta.globalIllumination;
 
     return (
         <>
-            <OrbitControls makeDefault enableDamping minDistance={5} maxDistance={100} />
-            <ambientLight intensity={0.4} />
-            <directionalLight position={[10, 15, 10]} intensity={0.5} />
-            <fog attach="fog" args={["#0a0b10", 30, 120]} />
+            <OrbitControls makeDefault enableDamping minDistance={5} maxDistance={120} />
 
-            <Grid args={[100, 100]} position={[0, -0.01, 0]} cellSize={1} sectionSize={5} fadeDistance={50} infiniteGrid />
+            {/* High-intensity Light Overhaul */}
+            <ambientLight intensity={gi * 1.5} />
+            <hemisphereLight
+                intensity={gi * 1.0}
+                color="#ffffff"
+                groundColor="#222244"
+            />
+            <directionalLight
+                position={[20, 30, 20]}
+                intensity={gi * 2.5}
+                castShadow
+            />
+            <directionalLight
+                position={[-20, 10, -10]}
+                intensity={gi * 0.8}
+                color="#aaccff"
+            />
 
+            {/* Fog push-back based on GI */}
+            <fog
+                attach="fog"
+                args={["#0a0b10", 50, 250 + (gi * 500)]}
+            />
+
+            <Grid args={[200, 200]} position={[0, -0.01, 0]} cellSize={1} sectionSize={10} fadeDistance={70} infiniteGrid />
+
+            {/* Stage Platform */}
             <mesh position={[0, scene.meta.stageHeight / 2, 0]}>
                 <boxGeometry args={[scene.meta.stageWidth, scene.meta.stageHeight, scene.meta.stageDepth]} />
-                <meshStandardMaterial color="#1a1b2e" />
+                <meshStandardMaterial
+                    color={gi > 0.5 ? "#1a1b2e" : "#0a0b1a"}
+                    roughness={0.7}
+                    metalness={0.4}
+                    emissive="#111122"
+                    emissiveIntensity={gi * 0.2}
+                />
             </mesh>
 
             {visibleProps.map((p) => {
@@ -170,6 +324,7 @@ function Scene3D() {
 // 2D Front View
 function Scene2DFrontView() {
     const { scene, getVisibleProps, getAssetById, updateProp, setSelectedPropId, getInterpolatedProp } = useScene();
+    if (!scene) return null;
     const visibleProps = getVisibleProps();
 
     // Pan & Zoom state
@@ -337,6 +492,8 @@ function Scene2DFrontView() {
 export default function Viewport3D() {
     const [viewMode, setViewMode] = useState<"3d" | "2d">("3d");
     const { scene, removeProp } = useScene();
+
+    if (!scene) return null;
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
